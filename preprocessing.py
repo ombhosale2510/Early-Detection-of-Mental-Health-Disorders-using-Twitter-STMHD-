@@ -63,68 +63,86 @@ def filter_tweet(text: str) -> bool:
     # TODO: implement more of a filter than just checking for the empty string
     return len(text) == 0
 
-NEGATIVE_DATADIR = "./data_sample/neg"
-DEPRESSION_DATADIR = "./data_sample/depression"
+NEGATIVE_PATH = "./data_sample/neg"
 ALL_DISORDERS = {
-    "depression": DEPRESSION_DATADIR
+    "adhd": "./data_sample/adhd",
+    "anxiety": "./data_sample/anxiety",
+    "bipolar": "./data_sample/bipolar",
+    "depression": "./data_sample/depression",
+    "mdd": "./data_sample/mdd",
+    "ocd": "./data_sample/ocd",
+    "ppd": "./data_sample/ppd",
+    "ptsd": "./data_sample/ptsd"
 }
 
-tweets_dicts = []
+def create_tweets_df(disorders: list[str]) -> pd.DataFrame:
+    if len(disorders) < 1:
+        raise ValueError("Must provide at least one disorder in addition to the negative group")
+    for disorder in disorders:
+        if disorder not in ALL_DISORDERS:
+            raise ValueError(f"The disorder '{disorder}' does not have a corresponding dataset")
 
-for user_id in os.listdir(f"{NEGATIVE_DATADIR}"):
-    if not user_id.isdigit():
-        continue # skip system files such as .DS_Store
+        elif not os.path.exists(ALL_DISORDERS[disorder]):
+            raise FileNotFoundError(f"The dataset for disorder '{disorder}' cannot be found")
 
-    user_tweets_file = f"{NEGATIVE_DATADIR}/{user_id}/tweets.json"
+    tweets_dicts = []
 
-    with open(user_tweets_file, 'r') as f:
-        tweets_json = json.load(f)
+    for user_id in os.listdir(f"{NEGATIVE_PATH}"):
+        if not user_id.isdigit():
+            continue # skip system files such as .DS_Store
 
-        for day_of_tweets, tweets_of_day in tweets_json.items():
-            for tweet in tweets_of_day:
-                tweet_text_cleaned = clean_text(tweet["text"])
+        user_tweets_file = f"{NEGATIVE_PATH}/{user_id}/tweets.json"
 
-                if filter_tweet(tweet_text_cleaned):
-                    continue # skip tweets that don't have alphanumeric characters
+        with open(user_tweets_file, 'r') as f:
+            tweets_json = json.load(f)
 
-                tweets_dicts.append({
-                    "tweet_id": tweet["tweet_id"],
-                    "tweet_text": tweet_text_cleaned,
-                    "tweet_day": day_of_tweets,
-                    "pre_covid": None,
-                    "disorder_flag": tweet["disorder_flag"],
-                    "disorder": "negative"
-                })
+            for day_of_tweets, tweets_of_day in tweets_json.items():
+                for tweet in tweets_of_day:
+                    tweet_text_cleaned = clean_text(tweet["text"])
 
-for disorder, disorder_path in ALL_DISORDERS.items():
-    for coviddir in ["precovid", "postcovid"]:
-        for user_id in os.listdir(f"{disorder_path}/{coviddir}"):
-            if not user_id.isdigit():
-                continue # skip system files such as .DS_Store
+                    if filter_tweet(tweet_text_cleaned):
+                        continue # skip tweets that don't have alphanumeric characters
 
-            user_tweets_file = f"{disorder_path}/{coviddir}/{user_id}/tweets.json"
+                    tweets_dicts.append({
+                        "tweet_id": tweet["tweet_id"],
+                        "tweet_text": tweet_text_cleaned,
+                        "tweet_day": day_of_tweets,
+                        "pre_covid": None,
+                        "disorder_flag": tweet["disorder_flag"],
+                        "disorder": "negative"
+                    })
 
-            with open(user_tweets_file, 'r') as f:
-                tweets_json = json.load(f)
+    for disorder in disorders:
+        disorder_path = ALL_DISORDERS[disorder]
 
-                for day_of_tweets, tweets_of_day in tweets_json.items():
-                    for tweet in tweets_of_day:
-                        tweet_text_cleaned = clean_text(tweet["text"])
+        for coviddir in ["precovid", "postcovid"]:
+            for user_id in os.listdir(f"{disorder_path}/{coviddir}"):
+                if not user_id.isdigit():
+                    continue # skip system files such as .DS_Store
 
-                        tweets_dicts.append({
-                            "tweet_id": tweet["tweet_id"],
-                            "tweet_text": tweet_text_cleaned,
-                            "tweet_day": day_of_tweets,
-                            "pre_covid": (coviddir == "precovid"),
-                            "disorder_flag": tweet["disorder_flag"],
-                            "disorder": disorder
-                        })
+                user_tweets_file = f"{disorder_path}/{coviddir}/{user_id}/tweets.json"
 
-tweets_df = pd.DataFrame(tweets_dicts, columns=["tweet_id", "tweet_text", "tweet_day", "pre_covid", "disorder_flag", "disorder"])
-tweets_df.set_index("tweet_id", inplace=True)
+                with open(user_tweets_file, 'r') as f:
+                    tweets_json = json.load(f)
+
+                    for day_of_tweets, tweets_of_day in tweets_json.items():
+                        for tweet in tweets_of_day:
+                            tweet_text_cleaned = clean_text(tweet["text"])
+
+                            tweets_dicts.append({
+                                "tweet_id": tweet["tweet_id"],
+                                "tweet_text": tweet_text_cleaned,
+                                "tweet_day": day_of_tweets,
+                                "pre_covid": (coviddir == "precovid"),
+                                "disorder_flag": tweet["disorder_flag"],
+                                "disorder": disorder
+                            })
+
+    tweets_df = pd.DataFrame(tweets_dicts, columns=["tweet_id", "tweet_text", "tweet_day", "pre_covid", "disorder_flag", "disorder"])
+    tweets_df.set_index("tweet_id", inplace=True)
+
+    return tweets_df
 
 if __name__ == "__main__":
-    print(tweets_df.loc[1364859005605212160]["tweet_text"])
-
-    #print(tweets_df)
+    print(create_tweets_df(["depression"]))
 
