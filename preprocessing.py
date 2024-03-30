@@ -19,6 +19,8 @@ import wordninja
 from collections import OrderedDict
 import dateutil.parser
 
+from sklearn.model_selection import train_test_split
+
 import nltk
 nltk.download('stopwords', quiet=True)
 nltk.download('wordnet', quiet=True)
@@ -32,12 +34,12 @@ from nltk.tokenize import TweetTokenizer
 from emot.emo_unicode import UNICODE_EMOJI
 from emot.emo_unicode import EMOTICONS_EMO
 
-def convert_emojis(text: str) -> str:
+def _convert_emojis(text: str) -> str:
     for emot in UNICODE_EMOJI:
         text = text.replace(emot, "_".join(UNICODE_EMOJI[emot].replace(",","").replace(":","").split()))
     return text
 
-def replace_emoticons(text: str) -> str:
+def _replace_emoticons(text: str) -> str:
     for emot in EMOTICONS_EMO:
         text = text.replace(emot, "_".join(EMOTICONS_EMO[emot].replace(",","").replace(":","").split()))
     return text
@@ -62,7 +64,7 @@ def _get_wordnet_pos(tag: str) -> str:
         return wordnet.NOUN
 
 # Lemmatize and tokenize the sentence
-def lemmatize(text: str) -> str:
+def _lemmatize(text: str) -> str:
     word_pos_tags = nltk.pos_tag(tweet_tokenizer.tokenize(text)) # Get position tags
     a = [word_net_lemmatizer.lemmatize(tag[0], _get_wordnet_pos(tag[1])) for tag in word_pos_tags] # Map the position tag and lemmatize the word/token
     return " ".join(a)
@@ -72,8 +74,8 @@ def clean_text(orig_text: str) -> str:
     text = orig_text
 
     # convert pictograms into a textual representation
-    text = convert_emojis(text)
-    text = replace_emoticons(text)
+    text = _convert_emojis(text)
+    text = _replace_emoticons(text)
 
     # basic text cleaning to remove special characters and URLs
     text = re.sub(r'_', ' ', text)
@@ -100,7 +102,7 @@ def clean_text(orig_text: str) -> str:
     # TODO: fix typos, replace abbreviations/short forms, and expand contractions
     # TODO: perform stemming (slicing the end or the beginning of words with the intention of removing affixes)
     
-    text = lemmatize(text)
+    text = _lemmatize(text)
 
     return text
 
@@ -215,6 +217,35 @@ def create_tweets_df(disorders: list[str]) -> pd.DataFrame:
 
     return tweets_df
 
+# Takes as input the entire tweets dataframe `tweets_df`, returns as output two dataframes representing a train and test split using the parameter `test_ratio`
+# The train and test set are stratified such that the ratio of target variables (i.e. whether or not a user has a disorder) is preserved in each of the train and test sets.
+# Per-user tweets are NOT split up between the train and test set; each user's entire history of tweets will remain contiguous, in the order that the tweets were posted.
+def stratify_shuffle_split_tweets(tweets_df: pd.DataFrame, test_ratio: float = 0.2) -> tuple[pd.DataFrame, pd.DataFrame]:
+    users_df = tweets_df[["user_id", "has_disorder"]].drop_duplicates()
+
+    # TODO: improve this - this is such a backward, inefficient way of doing this but I can't for the life of me figure out the correct way to do this yet
+    train_users_df, test_users_df, _, _ = train_test_split(users_df["user_id"], users_df["has_disorder"], test_size=test_ratio, shuffle=True, stratify=users_df["has_disorder"])
+
+    train_users = []
+    for user in train_users_df:
+        train_users.append(tweets_df[tweets_df.user_id.eq(user)])
+    train_df = pd.concat(train_users)
+
+    test_users = []
+    for user in test_users_df:
+        test_users.append(tweets_df[tweets_df.user_id.eq(user)])
+    test_df = pd.concat(test_users)
+
+    return (train_df, test_df)
+
+
+
 if __name__ == "__main__":
     tweets_df = create_tweets_df(["depression"])
-    print(tweets_df[["tweet_text_raw", "tweet_text"]])
+    train_df, test_df = stratify_shuffle_split_tweets(tweets_df)
+    
+    print("Training set:")
+    print(train_df[["user_id", "tweet_text", "tweet_day", "has_disorder"]])
+    print()
+    print("Test set:")
+    print(test_df[["user_id", "tweet_text", "tweet_day", "has_disorder"]])
