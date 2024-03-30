@@ -11,23 +11,7 @@
 
 import os
 import json
-import numpy as np
 import pandas as pd
-
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import (
-    PolynomialFeatures,
-    StandardScaler,
-    FunctionTransformer,
-    KBinsDiscretizer,
-    OneHotEncoder,
-)
-from sklearn.metrics import (
-    r2_score,
-    mean_squared_error,
-    mean_absolute_error,
-    mean_poisson_deviance,
-)
 
 import re
 import string
@@ -37,15 +21,13 @@ import dateutil.parser
 
 import nltk
 nltk.download('stopwords', quiet=True)
-#nltk.download('wordnet')
-#nltk.download('omw-1.4')
-#nltk.download('punkt')
+nltk.download('wordnet', quiet=True)
+nltk.download('averaged_perceptron_tagger', quiet=True)
 
 from nltk.corpus import stopwords
-#from nltk.stem import PorterStemmer
-#from nltk.tokenize import TweetTokenizer
-#from nltk.stem import WordNetLemmatizer
-#from nltk.tokenize import word_tokenize
+from nltk.corpus import wordnet
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import TweetTokenizer
 
 from emot.emo_unicode import UNICODE_EMOJI
 from emot.emo_unicode import EMOTICONS_EMO
@@ -60,14 +42,40 @@ def replace_emoticons(text: str) -> str:
         text = text.replace(emot, "_".join(EMOTICONS_EMO[emot].replace(",","").replace(":","").split()))
     return text
 
+# taken from https://medium.com/analytics-vidhya/nlp-tutorial-for-text-classification-in-python-8f19cd17b49e
+
+# Initialize the lemmatizer
+word_net_lemmatizer = WordNetLemmatizer()
+tweet_tokenizer = TweetTokenizer()
+ 
+# This is a helper function to map NTLK position tags
+def _get_wordnet_pos(tag: str) -> str:
+    if tag.startswith('J'):
+        return wordnet.ADJ
+    elif tag.startswith('V'):
+        return wordnet.VERB
+    elif tag.startswith('N'):
+        return wordnet.NOUN
+    elif tag.startswith('R'):
+        return wordnet.ADV
+    else:
+        return wordnet.NOUN
+
+# Lemmatize and tokenize the sentence
+def lemmatize(text: str) -> str:
+    word_pos_tags = nltk.pos_tag(tweet_tokenizer.tokenize(text)) # Get position tags
+    a = [word_net_lemmatizer.lemmatize(tag[0], _get_wordnet_pos(tag[1])) for tag in word_pos_tags] # Map the position tag and lemmatize the word/token
+    return " ".join(a)
+
 def clean_text(orig_text: str) -> str:
     # This function should clean up the text of each tweet to remove extra whitespace, punctuation, etc and convert emojis
-    text = orig_text.strip() # first pass of whitespace trimming
+    text = orig_text
 
+    # convert pictograms into a textual representation
     text = convert_emojis(text)
     text = replace_emoticons(text)
 
-    # these are taken directly from github.com/luisroberto-maker/MDD-and-PDD_Paper/blob/main/Pre-processing.ipynb
+    # basic text cleaning to remove special characters and URLs
     text = re.sub(r'_', ' ', text)
     text = re.sub(r'$\w*', '', text)
     text = re.sub(r'^RT[\s]+', '', text)
@@ -79,17 +87,22 @@ def clean_text(orig_text: str) -> str:
     text = re.sub(r'(.)\1+', r'\1\1', text)
     text = ' '.join(OrderedDict((w,w) for w in text.split()).keys())
 
+    # more basic text cleaning to remove punctuation, remove/insert whitespace where necessary, and convert text case
+
     text.translate(str.maketrans('', '', string.punctuation))
-    translator = str.maketrans('', '', string.punctuation)
-    text = text.translate(translator)
     text = wordninja.split(text)
     text = " ".join(text)
-    text = text.lower()
+    text = text.lower().strip()
+
+    # remove stopwords
     text = " ".join(word for word in str(text).split() if word not in stopwords.words('english'))
     
-    # TODO: any other text or punctuation that should be stripped?
+    # TODO: fix typos, replace abbreviations/short forms, and expand contractions
+    # TODO: perform stemming (slicing the end or the beginning of words with the intention of removing affixes)
+    
+    text = lemmatize(text)
 
-    return text.strip()
+    return text
 
 def filter_tweet(text: str) -> bool:
     # This function should filter out any tweets that are not relevant or long enough to use for this project, or that are just empty
@@ -146,8 +159,9 @@ def create_tweets_df(disorders: list[str]) -> pd.DataFrame:
                         "tweet_day": day_of_tweets,
                         "before_anchor_tweet": None,
                         "pre_covid_anchor": None,
-                        "disorder_flag": tweet["disorder_flag"],
-                        "disorder": "negative"
+                        "disorder_discourse": bool(tweet["disorder_flag"]),
+                        "disorder_name": None,
+                        "has_disorder": False
                     })
 
     for disorder in disorders:
@@ -175,6 +189,8 @@ def create_tweets_df(disorders: list[str]) -> pd.DataFrame:
                         for tweet in tweets_of_day:
                             tweet_text_raw = tweet["text"]
                             tweet_text_cleaned = clean_text(tweet_text_raw)
+                            
+                            # TODO: we need to perform vectorization on the text now for training inputs
 
                             if filter_tweet(tweet_text_cleaned):
                                 continue
@@ -187,12 +203,13 @@ def create_tweets_df(disorders: list[str]) -> pd.DataFrame:
                                 "tweet_day": day_of_tweets,
                                 "before_anchor_tweet": (tweet_date < anchor_tweet_date),
                                 "pre_covid_anchor": (coviddir == "precovid"),
-                                "disorder_flag": tweet["disorder_flag"],
-                                "disorder": disorder
+                                "disorder_discourse": bool(tweet["disorder_flag"]),
+                                "disorder_name": disorder,
+                                "has_disorder": True
                             })
 
     tweets_df = pd.DataFrame(tweets_dicts, columns=[
-        "tweet_id", "user_id", "tweet_text_raw", "tweet_text", "tweet_day", "before_anchor_tweet", "pre_covid_anchor", "disorder_flag", "disorder"
+        "tweet_id", "user_id", "tweet_text_raw", "tweet_text", "tweet_day", "before_anchor_tweet", "pre_covid_anchor", "disorder_discourse", "disorder_name", "has_disorder"
     ])
     tweets_df.set_index("tweet_id", inplace=True)
 
@@ -200,5 +217,4 @@ def create_tweets_df(disorders: list[str]) -> pd.DataFrame:
 
 if __name__ == "__main__":
     tweets_df = create_tweets_df(["depression"])
-    print(tweets_df)
-
+    print(tweets_df[["tweet_text_raw", "tweet_text"]])
