@@ -10,27 +10,26 @@
 # Basic proof-of-concept network to perform the disorder classification task
 # This is basically all just ripped from https://medium.com/analytics-vidhya/nlp-tutorial-for-text-classification-in-python-8f19cd17b49e
 
-from preprocessing import create_tweets_df, tweet_tokenizer
+from preprocessing import create_tweets_df, stratify_shuffle_split_tweets, tweet_tokenizer
 
 import numpy as np
 
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import (
-    PolynomialFeatures,
-    StandardScaler,
-    FunctionTransformer,
-    KBinsDiscretizer,
-    OneHotEncoder,
-)
-from sklearn.metrics import (
-    r2_score,
-    mean_squared_error,
-    mean_absolute_error,
-    mean_poisson_deviance,
-)
+# from sklearn.preprocessing import (
+#     PolynomialFeatures,
+#     StandardScaler,
+#     FunctionTransformer,
+#     KBinsDiscretizer,
+#     OneHotEncoder,
+# )
+# from sklearn.metrics import (
+#     r2_score,
+#     mean_squared_error,
+#     mean_absolute_error,
+#     mean_poisson_deviance,
+# )
 
 #for model-building
-from sklearn.model_selection import train_test_split
+#from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import classification_report, f1_score, accuracy_score, confusion_matrix
@@ -46,11 +45,15 @@ from gensim.models import Word2Vec
 TEST_RATIO = 0.2
 
 tweets_df = create_tweets_df(["depression"])
+train_df, test_df = stratify_shuffle_split_tweets(tweets_df)
 
 
 
 #SPLITTING THE TRAINING DATASET INTO TRAIN AND TEST
-X_train, X_test, y_train, y_test = train_test_split(tweets_df["tweet_text"], tweets_df["has_disorder"], test_size=TEST_RATIO, shuffle=True)
+X_train = train_df["tweet_text"]
+y_train = train_df["has_disorder"]
+X_test = test_df["tweet_text"]
+y_test = test_df["has_disorder"]
 
 #Word2Vec (TODO: get this working later?)
 # Word2Vec runs on tokenized sentences
