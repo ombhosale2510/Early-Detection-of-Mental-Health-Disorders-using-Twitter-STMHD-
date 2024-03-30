@@ -32,8 +32,8 @@ from sklearn.metrics import (
 import re
 import string
 import wordninja
-import html
 from collections import OrderedDict
+import dateutil.parser
 
 import nltk
 nltk.download('stopwords', quiet=True)
@@ -50,27 +50,22 @@ from nltk.corpus import stopwords
 from emot.emo_unicode import UNICODE_EMOJI
 from emot.emo_unicode import EMOTICONS_EMO
 
-
-def process_pictograms(text: str, preserve: bool = True) -> str:
-    if preserve:
-        for emot in UNICODE_EMOJI:
-            text = text.replace(emot, "_".join(UNICODE_EMOJI[emot].replace(",","").replace(":","").split()))
-        for emot in EMOTICONS_EMO:
-            text = text.replace(emot, "_".join(EMOTICONS_EMO[emot].replace(",","").replace(":","").split()))
-    
-    else:
-        for emot in UNICODE_EMOJI:
-            text = text.replace(emot, "")
-        for emot in EMOTICONS_EMO:
-            text = text.replace(emot, "")
-    
+def convert_emojis(text: str) -> str:
+    for emot in UNICODE_EMOJI:
+        text = text.replace(emot, "_".join(UNICODE_EMOJI[emot].replace(",","").replace(":","").split()))
     return text
 
-def clean_text(orig_text: str, preserve_pictograms: bool = True) -> str:
+def replace_emoticons(text: str) -> str:
+    for emot in EMOTICONS_EMO:
+        text = text.replace(emot, "_".join(EMOTICONS_EMO[emot].replace(",","").replace(":","").split()))
+    return text
+
+def clean_text(orig_text: str) -> str:
     # This function should clean up the text of each tweet to remove extra whitespace, punctuation, etc and convert emojis
     text = orig_text.strip() # first pass of whitespace trimming
 
-    text = process_pictograms(text, preserve_pictograms)
+    text = convert_emojis(text)
+    text = replace_emoticons(text)
 
     # these are taken directly from github.com/luisroberto-maker/MDD-and-PDD_Paper/blob/main/Pre-processing.ipynb
     text = re.sub(r'_', ' ', text)
@@ -83,8 +78,6 @@ def clean_text(orig_text: str, preserve_pictograms: bool = True) -> str:
     text = re.sub(r'[0-9]+', '', text)
     text = re.sub(r'(.)\1+', r'\1\1', text)
     text = ' '.join(OrderedDict((w,w) for w in text.split()).keys())
-
-    text = html.unescape(text)
 
     text.translate(str.maketrans('', '', string.punctuation))
     translator = str.maketrans('', '', string.punctuation)
@@ -103,15 +96,6 @@ def filter_tweet(text: str) -> bool:
     
     # TODO: implement more of a filter than just checking for the empty string
     return len(text) == 0
-
-def identify_anchor_tweet(anchor_text: str, candidate_text: str) -> bool:
-    anchor_text = clean_text(anchor_text, False)
-    candidate_text = clean_text(candidate_text, False)
-
-    anchor_stripped = " ".join(anchor_text.split()).strip().lower()
-    candidate_stripped = " ".join(candidate_text.split()).strip().lower()
-
-    return anchor_stripped == candidate_stripped
 
 NEGATIVE_PATH = "./data_sample/neg"
 ALL_DISORDERS = {
@@ -160,7 +144,7 @@ def create_tweets_df(disorders: list[str]) -> pd.DataFrame:
                         "tweet_text_raw": tweet_text_raw,
                         "tweet_text": tweet_text_cleaned,
                         "tweet_day": day_of_tweets,
-                        "anchor_tweet": False,
+                        "before_anchor_tweet": None,
                         "pre_covid_anchor": None,
                         "disorder_flag": tweet["disorder_flag"],
                         "disorder": "negative"
@@ -178,8 +162,7 @@ def create_tweets_df(disorders: list[str]) -> pd.DataFrame:
 
                 with open(user_anchor_tweet_file, 'r') as f:
                     tweet_json = json.load(f)
-                    anchor_tweet_text = tweet_json["anchor_tweet"]
-                    anchor_tweet_date = tweet_json["anchor_tweet_date"]
+                    anchor_tweet_date = dateutil.parser.parse(tweet_json["anchor_tweet_date"])
 
                 user_tweets_file = f"{disorder_path}/{coviddir}/{user_id}/tweets.json"
 
@@ -187,13 +170,11 @@ def create_tweets_df(disorders: list[str]) -> pd.DataFrame:
                     tweets_json = json.load(f)
 
                     for day_of_tweets, tweets_of_day in tweets_json.items():
+                        tweet_date = dateutil.parser.parse(day_of_tweets)
+
                         for tweet in tweets_of_day:
                             tweet_text_raw = tweet["text"]
                             tweet_text_cleaned = clean_text(tweet_text_raw)
-
-                            is_anchor_tweet = False
-                            if identify_anchor_tweet(anchor_tweet_text, tweet_text_raw):
-                                is_anchor_tweet = True
 
                             if filter_tweet(tweet_text_cleaned):
                                 continue
@@ -204,14 +185,14 @@ def create_tweets_df(disorders: list[str]) -> pd.DataFrame:
                                 "tweet_text_raw": tweet_text_raw,
                                 "tweet_text": tweet_text_cleaned,
                                 "tweet_day": day_of_tweets,
-                                "anchor_tweet": is_anchor_tweet,
+                                "before_anchor_tweet": (tweet_date < anchor_tweet_date),
                                 "pre_covid_anchor": (coviddir == "precovid"),
                                 "disorder_flag": tweet["disorder_flag"],
                                 "disorder": disorder
                             })
 
     tweets_df = pd.DataFrame(tweets_dicts, columns=[
-        "tweet_id", "user_id", "tweet_text_raw", "tweet_text", "tweet_day", "anchor_tweet", "pre_covid_anchor", "disorder_flag", "disorder"
+        "tweet_id", "user_id", "tweet_text_raw", "tweet_text", "tweet_day", "before_anchor_tweet", "pre_covid_anchor", "disorder_flag", "disorder"
     ])
     tweets_df.set_index("tweet_id", inplace=True)
 
@@ -219,5 +200,5 @@ def create_tweets_df(disorders: list[str]) -> pd.DataFrame:
 
 if __name__ == "__main__":
     tweets_df = create_tweets_df(["depression"])
-    print(tweets_df[tweets_df.anchor_tweet.eq(True)])
+    print(tweets_df)
 
