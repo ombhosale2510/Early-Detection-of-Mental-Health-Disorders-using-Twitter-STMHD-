@@ -73,35 +73,43 @@ def clean_text(orig_text: str) -> str:
     # This function should clean up the text of each tweet to remove extra whitespace, punctuation, etc and convert emojis
     text = orig_text
 
-    # convert pictograms into a textual representation
+    # URLs
+    text = re.sub(r'https?:\/\/.*[\r\n]*', '', text)
+    text = re.sub(r'http', '', text)
+    # Hashtags
+    text = re.sub(r'\@\w+|\#', '', text)
+    # Ellipses 
+    text = re.sub(r'\.{3,}', '', text)
+    # Numbers
+    text = re.sub(r'[0-9]+', '', text)
+    # Remove repeating characters
+    text = re.sub(r'(.)\1+', r'\1\1', text) 
+    # Duplicate words
+    text = ' '.join(OrderedDict((w,w) for w in text.split()).keys()) 
+    # convert pictograms into a textual representation (moved to AFTER URL removal)
     text = _convert_emojis(text)
     text = _replace_emoticons(text)
 
-    # basic text cleaning to remove special characters and URLs
     text = re.sub(r'_', ' ', text)
     text = re.sub(r'$\w*', '', text)
     text = re.sub(r'^RT[\s]+', '', text)
-    text = re.sub(r'https?:\/\/.*[\r\n]*', '', text)
-    text = re.sub(r'http', '', text)
-    text = re.sub(r'\@\w+|\#\…', '', text)
-    text = re.sub(r'…', '', text)
-    text = re.sub(r'[0-9]+', '', text)
-    text = re.sub(r'(.)\1+', r'\1\1', text)
-    text = ' '.join(OrderedDict((w,w) for w in text.split()).keys())
 
     # more basic text cleaning to remove punctuation, remove/insert whitespace where necessary, and convert text case
-
-    text.translate(str.maketrans('', '', string.punctuation))
+    text = text.translate(str.maketrans('', '', string.punctuation))
     text = wordninja.split(text)
     text = " ".join(text)
+
+    # Extra spaces
+    text = re.sub(r'\s{2,}', ' ', text)
     text = text.lower().strip()
 
     # remove stopwords
     text = " ".join(word for word in str(text).split() if word not in stopwords.words('english'))
-    
+
     # TODO: fix typos, replace abbreviations/short forms, and expand contractions
     # TODO: perform stemming (slicing the end or the beginning of words with the intention of removing affixes)
-    
+
+    # Lemmatization
     text = _lemmatize(text)
 
     return text
