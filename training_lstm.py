@@ -120,7 +120,7 @@ model.add(Masking(mask_value=0., input_shape=(max_sessions, 100)))
 model.add(LSTM(64, return_sequences=True, dropout=0.2)) 
 model.add(LSTM(64, dropout=0.2))
 model.add(Dense(64, activation='relu'))
-model.add(Dense(1, activation='softmax'))
+model.add(Dense(1, activation='sigmoid'))
 
 model.compile(loss='categorical_crossentropy', optimizer=Adam(learning_rate=0.001), metrics=['accuracy'])
 
