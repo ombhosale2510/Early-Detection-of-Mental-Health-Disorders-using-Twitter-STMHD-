@@ -10,7 +10,7 @@
 # Basic proof-of-concept network to perform the disorder classification task
 # This is basically all just ripped from https://medium.com/analytics-vidhya/nlp-tutorial-for-text-classification-in-python-8f19cd17b49e
 
-from preprocessing import create_tweets_df, tweet_tokenizer
+from preprocessing import create_tweets_df, stratify_shuffle_split_tweets, create_embeddings_sequences
 from tensorflow.keras.callbacks import EarlyStopping
 
 from tensorflow.keras.preprocessing.sequence import pad_sequences
@@ -44,59 +44,16 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from gensim.models import Word2Vec
 
 TEST_RATIO = 0.2
+MAX_SESSIONS = 100
 
 tweets_df = create_tweets_df(["depression", "anxiety"])
-tweets_df["tweet_text_tok"] = [tweet_tokenizer.tokenize(i) for i in tweets_df["tweet_text"]]
 
-def create_word_embeddings(word2vec, tweets_tok):
-  modelw = MeanEmbeddingVectorizer(word2vec)
-  return modelw.transform(tweets_tok)
+sequences, labels = create_embeddings_sequences(tweets_df, MAX_SESSIONS)
 
-
-
-#building Word2Vec model
-class MeanEmbeddingVectorizer(object):
-    def __init__(self, word2vec):
-        self.word2vec = word2vec
-        # if a text is empty we should return a vector of zeros
-        # with the same dimensionality as all the other vectors
-        self.dim = len(next(iter(word2vec.values())))
-    def fit(self, X, y):
-        return self
-    def transform(self, X):
-        return np.array([
-            np.mean([self.word2vec[w] for w in words if w in self.word2vec]
-                    or [np.zeros(self.dim)], axis=0)
-            for words in X
-        ])
-    
-
-
-model = Word2Vec(tweets_df["tweet_text_tok"], min_count=1)
-w2v = dict(zip(model.wv.index_to_key, model.wv.vectors))
-
-# Generate embeddings for all tweets
-tweet_embeddings = create_word_embeddings(w2v, tweets_df["tweet_text_tok"])
-
-tweet_embeddings_list = tweet_embeddings.tolist()
-tweets_df["tweet_embedding"] = tweet_embeddings_list
-
-sequences, labels = prepare_sequences(tweets_df.copy())
-
-
-max_sessions = 100
-
-for i, sequence in enumerate(sequences):
-    if len(sequence) < max_sessions:
-        padding_array = [0] * 100
-        for j in range(0, (max_sessions - len(sequence))):
-            sequences[i].append(padding_array)
-
-
-labels = np.array(labels)
 print(labels.shape)
-sequences = np.array(sequences)
 print(sequences.shape)
+
+
 
 early_stopper = EarlyStopping(monitor='val_loss',  
                               patience=10,  
@@ -116,7 +73,7 @@ batch_size = 32
 
 # Define the LSTM model
 model = Sequential()
-model.add(Masking(mask_value=0., input_shape=(max_sessions, 100)))
+model.add(Masking(mask_value=0., input_shape=(MAX_SESSIONS, 100)))
 model.add(LSTM(64, return_sequences=True, dropout=0.2)) 
 model.add(LSTM(64, dropout=0.2))
 model.add(Dense(64, activation='relu'))

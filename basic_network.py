@@ -10,7 +10,7 @@
 # Basic proof-of-concept network to perform the disorder classification task
 # This is basically all just ripped from https://medium.com/analytics-vidhya/nlp-tutorial-for-text-classification-in-python-8f19cd17b49e
 
-from preprocessing import create_tweets_df, stratify_shuffle_split_tweets, tweet_tokenizer
+from preprocessing import create_tweets_df, stratify_shuffle_split_tweets, create_word_embeddings_model
 
 import numpy as np
 
@@ -51,44 +51,22 @@ train_df, test_df = stratify_shuffle_split_tweets(tweets_df)
 
 #SPLITTING THE TRAINING DATASET INTO TRAIN AND TEST
 X_train = train_df["tweet_text"]
+X_train_tok = train_df["tweet_text_tok"]
 y_train = train_df["has_disorder"]
 X_test = test_df["tweet_text"]
+X_test_tok = test_df["tweet_text_tok"]
 y_test = test_df["has_disorder"]
-
-#Word2Vec (TODO: get this working later?)
-# Word2Vec runs on tokenized sentences
-X_train_tok = [tweet_tokenizer.tokenize(i) for i in X_train]  
-X_test_tok = [tweet_tokenizer.tokenize(i) for i in X_test]
 
 # Term Frequency-Inverse Document Frequencies
 tfidf_vectorizer = TfidfVectorizer(use_idf=True)
 X_train_vectors_tfidf = tfidf_vectorizer.fit_transform(X_train) 
 X_test_vectors_tfidf = tfidf_vectorizer.transform(X_test)
 
-#building Word2Vec model
-class MeanEmbeddingVectorizer(object):
-    def __init__(self, word2vec):
-        self.word2vec = word2vec
-        # if a text is empty we should return a vector of zeros
-        # with the same dimensionality as all the other vectors
-        self.dim = len(next(iter(word2vec.values())))
-    def fit(self, X, y):
-        return self
-    def transform(self, X):
-        return np.array([
-            np.mean([self.word2vec[w] for w in words if w in self.word2vec]
-                    or [np.zeros(self.dim)], axis=0)
-            for words in X
-        ])
-
-tweets_df["tweet_text_tok"] = [tweet_tokenizer.tokenize(i) for i in tweets_df["tweet_text"]]
-model = Word2Vec(tweets_df["tweet_text_tok"], min_count=1)
-w2v = dict(zip(model.wv.index_to_key, model.wv.vectors)) # TODO: clean up this copy-pasted code
-modelw = MeanEmbeddingVectorizer(w2v)
+vectorizer = create_word_embeddings_model(tweets_df["tweet_text_tok"])
 
 # converting text to numerical data using Word2Vec
-X_train_vectors_w2v = modelw.transform(X_train_tok)
-X_test_vectors_w2v = modelw.transform(X_test_tok)
+X_train_vectors_w2v = vectorizer.transform(X_train_tok)
+X_test_vectors_w2v = vectorizer.transform(X_test_tok)
 
 
 
